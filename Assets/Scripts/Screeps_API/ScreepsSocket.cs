@@ -10,6 +10,7 @@ namespace Screeps_API
         private WebSocket Socket { get; set; }
         private Dictionary<string, Action<JSONObject>> _subscriptions = new Dictionary<string, Action<JSONObject>>();
         private Queue<MessageEventArgs> _messages = new Queue<MessageEventArgs>();
+        private string _tickSubscription;
 
         public Action<EventArgs> OnOpen;
         public Action<CloseEventArgs> OnClose;
@@ -137,6 +138,11 @@ namespace Screeps_API
             }
 
             _subscriptions[list[0].str].Invoke(list[1]);
+
+            if (list[0].str.Equals(_tickSubscription))
+            {
+                ScreepsAPI.Instance.IncrementTime();
+            }
         }
 
         public void Subscribe(string path, Action<JSONObject> callback)
@@ -144,6 +150,11 @@ namespace Screeps_API
             Debug.Log("subscribing " + path);
             Socket.Send(string.Format("subscribe {0}", path));
             _subscriptions[path] = callback;
+            if(_tickSubscription == null && path.IndexOf("room")==0)
+            {
+                _tickSubscription = path;
+            }
+
         }
 
         public void Unsub(string path, bool remove = true)
@@ -152,6 +163,10 @@ namespace Screeps_API
             Socket.Send(string.Format("unsubscribe {0}", path));
             if (remove)
                 _subscriptions.Remove(path);
+            if(_tickSubscription.Equals(path))
+            {
+                _tickSubscription = tryToFindNewSubscriptionForTick();
+            }
         }
 
         private void UnsubAll()
@@ -168,6 +183,15 @@ namespace Screeps_API
         {
             UnsubAll();
             Socket.Close();
+        }
+
+        private string tryToFindNewSubscriptionForTick()
+        {
+            return _subscriptions.Keys.ToList().Find(
+                delegate (string path)
+                {
+                    return path.IndexOf("room")==0;
+                });
         }
     }
 }
