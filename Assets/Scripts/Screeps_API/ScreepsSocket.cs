@@ -10,7 +10,6 @@ namespace Screeps_API
         private WebSocket Socket { get; set; }
         private Dictionary<string, Action<JSONObject>> _subscriptions = new Dictionary<string, Action<JSONObject>>();
         private Queue<MessageEventArgs> _messages = new Queue<MessageEventArgs>();
-        private string _tickSubscription;
 
         public Action<EventArgs> OnOpen;
         public Action<CloseEventArgs> OnClose;
@@ -136,13 +135,22 @@ namespace Screeps_API
             {
                 return;
             }
-
-            _subscriptions[list[0].str].Invoke(list[1]);
-
-            if (list[0].str.Equals(_tickSubscription))
+            if(list[0].str.IndexOf("room:")==0)
             {
-                ScreepsAPI.Instance.IncrementTime();
+                findAdUpdateTimeInRoomSubscription(list[1]);
             }
+            _subscriptions[list[0].str].Invoke(list[1]);
+        }
+
+        private void findAdUpdateTimeInRoomSubscription(JSONObject json)
+        {
+            if(!json.HasField("gameTime") || json["gameTime"] == null)
+            {
+                Debug.LogWarningFormat("Can'r find game time in room subscription: {0}", json);
+                return;
+            }
+            long currentTime = (long)json["gameTime"].n;
+            ScreepsAPI.Instance.UpdateTime(currentTime);
         }
 
         public void Subscribe(string path, Action<JSONObject> callback)
@@ -150,11 +158,6 @@ namespace Screeps_API
             Debug.Log("subscribing " + path);
             Socket.Send(string.Format("subscribe {0}", path));
             _subscriptions[path] = callback;
-            if(_tickSubscription == null && path.IndexOf("room")==0)
-            {
-                _tickSubscription = path;
-            }
-
         }
 
         public void Unsub(string path, bool remove = true)
@@ -163,10 +166,6 @@ namespace Screeps_API
             Socket.Send(string.Format("unsubscribe {0}", path));
             if (remove)
                 _subscriptions.Remove(path);
-            if(_tickSubscription.Equals(path))
-            {
-                _tickSubscription = tryToFindNewSubscriptionForTick();
-            }
         }
 
         private void UnsubAll()
@@ -183,15 +182,6 @@ namespace Screeps_API
         {
             UnsubAll();
             Socket.Close();
-        }
-
-        private string tryToFindNewSubscriptionForTick()
-        {
-            return _subscriptions.Keys.ToList().Find(
-                delegate (string path)
-                {
-                    return path.IndexOf("room")==0;
-                });
         }
     }
 }
